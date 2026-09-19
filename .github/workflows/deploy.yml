@@ -13,11 +13,18 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Generar token de GitHub App
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.GH_APP_ID }}
+          private-key: ${{ secrets.GH_PRIVATE_KEY }}
+
       - name: Descargar repositorio del cliente
         uses: actions/checkout@v4
         with:
           repository: irojo9/${{ inputs.cliente }}
-          token: ${{ secrets.GH_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
           path: web
 
       - name: Instalar Wrangler
