@@ -1,10 +1,15 @@
-name: Test GitHub App
+name: MultiWeb Deploy
 
 on:
   workflow_dispatch:
+    inputs:
+      cliente:
+        description: "Nombre exacto del repositorio del cliente"
+        required: true
+        type: string
 
 jobs:
-  test:
+  deploy:
     runs-on: ubuntu-latest
 
     steps:
@@ -15,13 +20,50 @@ jobs:
           app-id: ${{ secrets.GH_APP_ID }}
           private-key: ${{ secrets.GH_PRIVATE_KEY }}
 
-      - name: Probar acceso al repositorio
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+      - name: Descargar repositorio del cliente
+        uses: actions/checkout@v4
+        with:
+          repository: irojo9/${{ inputs.cliente }}
+          token: ${{ steps.app-token.outputs.token }}
+          path: web
+
+      - name: Mostrar archivos encontrados
         run: |
-          echo "Comprobando acceso..."
+          echo "Archivos del cliente:"
+          find web -type f -not -path '*/.git/*'
 
-          gh api repos/irojo9/construccionesyreformasraycosa.com \
-            --jq '.full_name'
+      - name: Instalar Wrangler
+        run: npm install -g wrangler@latest
 
-          echo "Acceso correcto."
+      - name: Publicar archivos en Cloudflare R2
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+        run: |
+          cd web
+
+          find . -type f \
+            -not -path './.git/*' \
+            -print0 | while IFS= read -r -d '' file
+          do
+            key="${file#./}"
+
+            echo "Subiendo: ${key}"
+
+            wrangler r2 object put \
+              "clientes-web/${{ inputs.cliente }}/${key}" \
+              --file "$file" \
+              --remote
+          done
+
+      - name: Despliegue completado
+        run: |
+          echo "========================================="
+          echo "       DESPLIEGUE COMPLETADO"
+          echo "========================================="
+          echo "Repositorio:"
+          echo "irojo9/${{ inputs.cliente }}"
+          echo ""
+          echo "R2:"
+          echo "clientes-web/${{ inputs.cliente }}/"
+          echo "========================================="
