@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       cliente:
-        description: "Nombre del repositorio del cliente"
+        description: "Nombre exacto del repositorio del cliente"
         required: true
         type: string
 
@@ -30,7 +30,7 @@ jobs:
       - name: Instalar Wrangler
         run: npm install -g wrangler
 
-      - name: Publicar archivos en R2
+      - name: Publicar todos los archivos en R2
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
@@ -50,3 +50,15 @@ jobs:
               --file "$file" \
               --remote
           done
+
+      - name: Despliegue completado
+        run: |
+          echo "========================================="
+          echo "      DESPLIEGUE COMPLETADO"
+          echo "========================================="
+          echo "Repositorio:"
+          echo "irojo9/${{ inputs.cliente }}"
+          echo ""
+          echo "R2:"
+          echo "clientes-web/${{ inputs.cliente }}/"
+          echo "========================================="
