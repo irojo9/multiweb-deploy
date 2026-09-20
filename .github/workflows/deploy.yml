@@ -1,18 +1,42 @@
 name: MultiWeb Deploy
 
 on:
-  workflow_dispatch:
-    inputs:
-      cliente:
-        description: "Nombre exacto del repositorio"
-        required: true
-        type: string
+  repository_dispatch:
+    types:
+      - deploy-client
 
 jobs:
+
   deploy:
+
     runs-on: ubuntu-latest
 
     steps:
+
+      # ==========================================
+      # Información del despliegue
+      # ==========================================
+
+      - name: Información del despliegue
+        run: |
+          echo "========================================="
+          echo "       MULTIWEB DEPLOY"
+          echo "========================================="
+          echo "Cliente:"
+          echo "${{ github.event.client_payload.cliente }}"
+          echo ""
+          echo "Repositorio:"
+          echo "${{ github.event.client_payload.repositorio }}"
+          echo ""
+          echo "Commit:"
+          echo "${{ github.event.client_payload.commit }}"
+          echo "========================================="
+
+
+      # ==========================================
+      # Crear token GitHub App
+      # ==========================================
+
       - name: Generar token de GitHub App
         id: app-token
         uses: actions/create-github-app-token@v2
@@ -20,62 +44,119 @@ jobs:
           app-id: ${{ secrets.GH_APP_ID }}
           private-key: ${{ secrets.GH_PRIVATE_KEY }}
           owner: irojo9
-          repositories: ${{ inputs.cliente }}
+          repositories: ${{ github.event.client_payload.cliente }}
+
+
+      # ==========================================
+      # Comprobar acceso
+      # ==========================================
 
       - name: Comprobar acceso al repositorio
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
-        run: |
-          echo "Comprobando acceso a:"
-          echo "irojo9/${{ inputs.cliente }}"
 
-          gh api repos/irojo9/${{ inputs.cliente }} \
+        run: |
+
+          echo "Comprobando acceso a:"
+          echo "irojo9/${{ github.event.client_payload.cliente }}"
+
+          gh api \
+            repos/irojo9/${{ github.event.client_payload.cliente }} \
             --jq '.full_name'
+
+
+      # ==========================================
+      # Descargar web
+      # ==========================================
 
       - name: Descargar repositorio
         uses: actions/checkout@v4
+
         with:
-          repository: irojo9/${{ inputs.cliente }}
+          repository: irojo9/${{ github.event.client_payload.cliente }}
           token: ${{ steps.app-token.outputs.token }}
           path: web
 
+
+      # ==========================================
+      # Mostrar archivos
+      # ==========================================
+
       - name: Mostrar archivos
+
         run: |
+
           echo "Archivos encontrados:"
-          find web -type f -not -path '*/.git/*'
+
+          find web \
+            -type f \
+            -not -path '*/.git/*'
+
+
+      # ==========================================
+      # Instalar Wrangler
+      # ==========================================
 
       - name: Instalar Wrangler
-        run: npm install -g wrangler@latest
+
+        run: |
+
+          npm install -g wrangler@latest
+
+
+      # ==========================================
+      # Publicar en Cloudflare R2
+      # ==========================================
 
       - name: Publicar en Cloudflare R2
+
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+
         run: |
+
           cd web
 
-          find . -type f \
+          find . \
+            -type f \
             -not -path './.git/*' \
             -print0 | while IFS= read -r -d '' file
+
           do
+
             key="${file#./}"
 
             echo "Subiendo: $key"
 
             wrangler r2 object put \
-              "clientes-web/${{ inputs.cliente }}/${key}" \
+              "clientes-web/${{ github.event.client_payload.cliente }}/${key}" \
               --file "$file" \
               --remote
+
           done
 
+
+      # ==========================================
+      # Resultado
+      # ==========================================
+
       - name: Resultado
+
         run: |
+
+          echo ""
           echo "========================================="
           echo "       DESPLIEGUE COMPLETADO"
           echo "========================================="
+          echo ""
+          echo "Cliente:"
+          echo "${{ github.event.client_payload.cliente }}"
+          echo ""
           echo "Repositorio:"
-          echo "irojo9/${{ inputs.cliente }}"
+          echo "irojo9/${{ github.event.client_payload.cliente }}"
           echo ""
           echo "R2:"
-          echo "clientes-web/${{ inputs.cliente }}/"
+          echo "clientes-web/${{ github.event.client_payload.cliente }}/"
+          echo ""
           echo "========================================="
