@@ -46,7 +46,7 @@ jobs:
 
 
       # ==========================================
-      # COMPROBAR REPOSITORIO
+      # COMPROBAR ACCESO
       # ==========================================
 
       - name: Comprobar acceso al repositorio
@@ -62,7 +62,7 @@ jobs:
 
 
       # ==========================================
-      # DESCARGAR WEB
+      # DESCARGAR REPOSITORIO
       # ==========================================
 
       - name: Descargar repositorio
@@ -84,7 +84,7 @@ jobs:
 
 
       # ==========================================
-      # WRANGLER
+      # INSTALAR WRANGLER
       # ==========================================
 
       - name: Instalar Wrangler
@@ -125,21 +125,29 @@ jobs:
 
 
       # ==========================================
-      # CREAR MAPA DE PREVIEWS
+      # CREAR / ACTUALIZAR MAPA DE PREVIEWS
       # ==========================================
 
       - name: Crear preview-map.json
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          CLIENTE: ${{ github.event.client_payload.cliente }}
         run: |
 
-          CLIENTE="${{ github.event.client_payload.cliente }}"
+          echo "========================================="
+          echo "       ACTUALIZANDO PREVIEW MAP"
+          echo "========================================="
 
-          echo "Cliente detectado:"
+          echo "Cliente:"
           echo "$CLIENTE"
 
-          # Descargar mapa existente si existe
+          echo ""
+
+          # ========================================
+          # INTENTAR DESCARGAR MAPA EXISTENTE
+          # ========================================
+
           if wrangler r2 object get \
             "clientes-web/preview-map.json" \
             --file preview-map.json \
@@ -156,22 +164,40 @@ jobs:
 
           fi
 
-          # Actualizar el mapa
+
+          # ========================================
+          # ACTUALIZAR MAPA
+          # ========================================
+
           python3 - <<'PY'
           import json
           import os
 
           cliente = os.environ["CLIENTE"]
 
+          print("Cliente recibido:")
+          print(cliente)
+
           try:
-              with open("preview-map.json", "r", encoding="utf-8") as f:
+              with open(
+                  "preview-map.json",
+                  "r",
+                  encoding="utf-8"
+              ) as f:
                   data = json.load(f)
-          except:
+          except Exception:
               data = {}
+
+          # El repositorio coincide con el dominio
+          # del cliente.
 
           data[cliente] = cliente
 
-          with open("preview-map.json", "w", encoding="utf-8") as f:
+          with open(
+              "preview-map.json",
+              "w",
+              encoding="utf-8"
+          ) as f:
               json.dump(
                   data,
                   f,
@@ -179,16 +205,41 @@ jobs:
                   ensure_ascii=False
               )
 
+          print("")
           print("Mapa actualizado:")
-          print(json.dumps(data, indent=2, ensure_ascii=False))
+          print(
+              json.dumps(
+                  data,
+                  indent=2,
+                  ensure_ascii=False
+              )
+          )
           PY
 
-          echo "Subiendo preview-map.json..."
+
+          # ========================================
+          # MOSTRAR MAPA
+          # ========================================
+
+          echo ""
+          echo "Contenido final de preview-map.json:"
+          cat preview-map.json
+
+          echo ""
+
+
+          # ========================================
+          # SUBIR MAPA A R2
+          # ========================================
+
+          echo "Subiendo preview-map.json a R2..."
 
           wrangler r2 object put \
             "clientes-web/preview-map.json" \
             --file preview-map.json \
             --remote
+
+          echo "Mapa subido correctamente."
 
 
       # ==========================================
