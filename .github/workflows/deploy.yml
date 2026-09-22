@@ -32,7 +32,7 @@ jobs:
 
 
       # ==========================================
-      # GENERAR TOKEN DE GITHUB APP
+      # TOKEN GITHUB APP
       # ==========================================
 
       - name: Generar token de GitHub App
@@ -53,7 +53,6 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
-
           echo "Comprobando acceso a:"
           echo "irojo9/${{ github.event.client_payload.cliente }}"
 
@@ -80,33 +79,27 @@ jobs:
 
       - name: Mostrar archivos
         run: |
-
           echo "Archivos encontrados:"
-
-          find web \
-            -type f \
-            -not -path '*/.git/*'
+          find web -type f -not -path '*/.git/*'
 
 
       # ==========================================
-      # INSTALAR WRANGLER
+      # WRANGLER
       # ==========================================
 
       - name: Instalar Wrangler
         run: |
-
           npm install -g wrangler@latest
 
 
       # ==========================================
-      # PUBLICAR EN CLOUDFLARE R2
+      # SUBIR WEB A R2
       # ==========================================
 
       - name: Publicar en Cloudflare R2
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
-
         run: |
 
           cd web
@@ -114,15 +107,12 @@ jobs:
           find . \
             -type f \
             -not -path './.git/*' \
-            -print0 |
-
-          while IFS= read -r -d '' file
+            -print0 | while IFS= read -r -d '' file
           do
 
             key="${file#./}"
 
-            echo "Subiendo:"
-            echo "$key"
+            echo "Subiendo: $key"
 
             wrangler r2 object put \
               "clientes-web/${{ github.event.client_payload.cliente }}/${key}" \
@@ -130,6 +120,75 @@ jobs:
               --remote
 
           done
+
+          cd ..
+
+
+      # ==========================================
+      # CREAR MAPA DE PREVIEWS
+      # ==========================================
+
+      - name: Crear preview-map.json
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+        run: |
+
+          CLIENTE="${{ github.event.client_payload.cliente }}"
+
+          echo "Cliente detectado:"
+          echo "$CLIENTE"
+
+          # Descargar mapa existente si existe
+          if wrangler r2 object get \
+            "clientes-web/preview-map.json" \
+            --file preview-map.json \
+            --remote
+          then
+
+            echo "Mapa existente encontrado."
+
+          else
+
+            echo "No existe mapa. Creando uno nuevo."
+
+            echo "{}" > preview-map.json
+
+          fi
+
+          # Actualizar el mapa
+          python3 - <<'PY'
+          import json
+          import os
+
+          cliente = os.environ["CLIENTE"]
+
+          try:
+              with open("preview-map.json", "r", encoding="utf-8") as f:
+                  data = json.load(f)
+          except:
+              data = {}
+
+          data[cliente] = cliente
+
+          with open("preview-map.json", "w", encoding="utf-8") as f:
+              json.dump(
+                  data,
+                  f,
+                  indent=2,
+                  ensure_ascii=False
+              )
+
+          print("Mapa actualizado:")
+          print(json.dumps(data, indent=2, ensure_ascii=False))
+          PY
+
+          echo "Subiendo preview-map.json..."
+
+          wrangler r2 object put \
+            "clientes-web/preview-map.json" \
+            --file preview-map.json \
+            --remote
 
 
       # ==========================================
@@ -144,20 +203,16 @@ jobs:
           echo "       DESPLIEGUE COMPLETADO"
           echo "========================================="
           echo ""
-
           echo "Cliente:"
           echo "${{ github.event.client_payload.cliente }}"
-
           echo ""
-
           echo "Repositorio:"
           echo "irojo9/${{ github.event.client_payload.cliente }}"
-
           echo ""
-
           echo "R2:"
           echo "clientes-web/${{ github.event.client_payload.cliente }}/"
-
           echo ""
-
+          echo "Preview:"
+          echo "https://${{ github.event.client_payload.cliente }}.damemiweb.com"
+          echo ""
           echo "========================================="
