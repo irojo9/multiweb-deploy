@@ -112,11 +112,41 @@ jobs:
 
             key="${file#./}"
 
-            echo "Subiendo: $key"
+            # Tipo de contenido según la extensión (wrangler no lo deduce)
+            ext="${file##*.}"
+            ext="${ext,,}"
+
+            case "$ext" in
+              html|htm)    content_type="text/html; charset=utf-8" ;;
+              css)         content_type="text/css; charset=utf-8" ;;
+              js|mjs)      content_type="text/javascript; charset=utf-8" ;;
+              json|map)    content_type="application/json; charset=utf-8" ;;
+              webmanifest) content_type="application/manifest+json; charset=utf-8" ;;
+              xml)         content_type="application/xml; charset=utf-8" ;;
+              txt|md)      content_type="text/plain; charset=utf-8" ;;
+              svg)         content_type="image/svg+xml" ;;
+              png)         content_type="image/png" ;;
+              jpg|jpeg)    content_type="image/jpeg" ;;
+              gif)         content_type="image/gif" ;;
+              webp)        content_type="image/webp" ;;
+              avif)        content_type="image/avif" ;;
+              ico)         content_type="image/x-icon" ;;
+              woff2)       content_type="font/woff2" ;;
+              woff)        content_type="font/woff" ;;
+              ttf)         content_type="font/ttf" ;;
+              otf)         content_type="font/otf" ;;
+              pdf)         content_type="application/pdf" ;;
+              mp4)         content_type="video/mp4" ;;
+              webm)        content_type="video/webm" ;;
+              *)           content_type="application/octet-stream" ;;
+            esac
+
+            echo "Subiendo: $key ($content_type)"
 
             wrangler r2 object put \
               "clientes-web/${{ github.event.client_payload.cliente }}/${key}" \
               --file "$file" \
+              --content-type "$content_type" \
               --remote
 
           done
