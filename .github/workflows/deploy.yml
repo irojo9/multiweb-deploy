@@ -5,9 +5,26 @@ on:
     types:
       - deploy-client
 
+  # Relanzar a mano el despliegue de un cliente desde la pestaña Actions
+  workflow_dispatch:
+    inputs:
+      cliente:
+        description: "Repositorio del cliente (p. ej. startdustrunner.com)"
+        required: true
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
+    # Los despliegues de un mismo cliente van en cola: si dos pushes llegan
+    # casi a la vez, uno no puede sobrescribir en R2 los archivos del otro
+    # con una versión más antigua.
+    concurrency:
+      group: deploy-${{ github.event.client_payload.cliente || github.event.inputs.cliente }}
+      cancel-in-progress: false
+
+    env:
+      CLIENTE: ${{ github.event.client_payload.cliente || github.event.inputs.cliente }}
 
     steps:
 
@@ -21,7 +38,7 @@ jobs:
           echo "        DAME MI WEB - DEPLOY"
           echo "========================================="
           echo "Cliente:"
-          echo "${{ github.event.client_payload.cliente }}"
+          echo "${{ env.CLIENTE }}"
           echo ""
           echo "Repositorio:"
           echo "${{ github.event.client_payload.repositorio }}"
@@ -42,7 +59,7 @@ jobs:
           app-id: ${{ secrets.GH_APP_ID }}
           private-key: ${{ secrets.GH_PRIVATE_KEY }}
           owner: irojo9
-          repositories: ${{ github.event.client_payload.cliente }}
+          repositories: ${{ env.CLIENTE }}
 
 
       # ==========================================
@@ -54,10 +71,10 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           echo "Comprobando acceso a:"
-          echo "irojo9/${{ github.event.client_payload.cliente }}"
+          echo "irojo9/${{ env.CLIENTE }}"
 
           gh api \
-            repos/irojo9/${{ github.event.client_payload.cliente }} \
+            repos/irojo9/${{ env.CLIENTE }} \
             --jq '.full_name'
 
 
@@ -68,7 +85,7 @@ jobs:
       - name: Descargar repositorio
         uses: actions/checkout@v4
         with:
-          repository: irojo9/${{ github.event.client_payload.cliente }}
+          repository: irojo9/${{ env.CLIENTE }}
           token: ${{ steps.app-token.outputs.token }}
           path: web
 
@@ -144,7 +161,7 @@ jobs:
             echo "Subiendo: $key ($content_type)"
 
             wrangler r2 object put \
-              "clientes-web/${{ github.event.client_payload.cliente }}/${key}" \
+              "clientes-web/${{ env.CLIENTE }}/${key}" \
               --file "$file" \
               --content-type "$content_type" \
               --remote
@@ -162,7 +179,6 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
-          CLIENTE: ${{ github.event.client_payload.cliente }}
         run: |
 
           echo "========================================="
@@ -285,15 +301,15 @@ jobs:
           echo "========================================="
           echo ""
           echo "Cliente:"
-          echo "${{ github.event.client_payload.cliente }}"
+          echo "${{ env.CLIENTE }}"
           echo ""
           echo "Repositorio:"
-          echo "irojo9/${{ github.event.client_payload.cliente }}"
+          echo "irojo9/${{ env.CLIENTE }}"
           echo ""
           echo "R2:"
-          echo "clientes-web/${{ github.event.client_payload.cliente }}/"
+          echo "clientes-web/${{ env.CLIENTE }}/"
           echo ""
           echo "Preview:"
-          echo "https://${{ github.event.client_payload.cliente }}.damemiweb.com"
+          echo "https://${{ env.CLIENTE }}.damemiweb.com"
           echo ""
           echo "========================================="
