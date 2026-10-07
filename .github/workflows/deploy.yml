@@ -79,10 +79,37 @@ jobs:
 
 
       # ==========================================
+      # ¿HAY QUE PUBLICAR?
+      #
+      # Los commits con [skip ci] (p. ej. borradores guardados desde un
+      # panel de redacción) no se publican. Un aviso con forzar=true
+      # (el panel pidiendo publicar) se publica siempre.
+      # ==========================================
+
+      - name: Comprobar si hay que publicar
+        id: decidir
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          COMMIT: ${{ github.event.client_payload.commit }}
+          FORZAR: ${{ github.event.client_payload.forzar }}
+        run: |
+          publicar=true
+          if [ -n "$COMMIT" ] && [ "$FORZAR" != "true" ]; then
+            mensaje=$(gh api "repos/irojo9/${{ env.CLIENTE }}/commits/$COMMIT" --jq '.commit.message' || true)
+            if printf '%s' "$mensaje" | grep -qiE '\[(skip ci|ci skip|no ci|skip actions|actions skip)\]'; then
+              publicar=false
+              echo "El commit lleva [skip ci]: no se publica."
+            fi
+          fi
+          echo "publicar=$publicar" >> "$GITHUB_OUTPUT"
+
+
+      # ==========================================
       # DESCARGAR REPOSITORIO
       # ==========================================
 
       - name: Descargar repositorio
+        if: steps.decidir.outputs.publicar == 'true'
         uses: actions/checkout@v4
         with:
           repository: irojo9/${{ env.CLIENTE }}
@@ -91,10 +118,65 @@ jobs:
 
 
       # ==========================================
+      # ¿WEB CON COMPILACIÓN?
+      #
+      # Si el repositorio tiene package.json con un script «build», se
+      # compila y se publica solo la carpeta resultante (dist/ por defecto,
+      # o la indicada en "multiweb": { "salida": "…" } del package.json).
+      # El resto de webs se publican tal cual, como siempre.
+      # ==========================================
+
+      - name: Detectar web con compilación
+        id: tipo
+        if: steps.decidir.outputs.publicar == 'true'
+        run: |
+          compilar=false
+          salida=dist
+          if [ -f web/package.json ]; then
+            compilar=$(node -e "const p=require('./web/package.json');process.stdout.write(p.scripts&&p.scripts.build?'true':'false')")
+            salida=$(node -e "const p=require('./web/package.json');process.stdout.write((p.multiweb&&p.multiweb.salida)||'dist')")
+          fi
+          echo "compilar=$compilar" >> "$GITHUB_OUTPUT"
+          echo "salida=$salida" >> "$GITHUB_OUTPUT"
+          echo "Compilar: $compilar · Carpeta publicada: $salida"
+
+      - name: Preparar Node
+        if: steps.tipo.outputs.compilar == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Caché de la compilación
+        if: steps.tipo.outputs.compilar == 'true'
+        uses: actions/cache@v4
+        with:
+          path: web/.cache
+          key: compilacion-${{ env.CLIENTE }}-${{ github.run_id }}
+          restore-keys: compilacion-${{ env.CLIENTE }}-
+
+      - name: Descargar scripts de despliegue
+        if: steps.tipo.outputs.compilar == 'true'
+        uses: actions/checkout@v4
+        with:
+          path: multiweb
+          sparse-checkout: scripts
+
+      - name: Compilar web
+        if: steps.tipo.outputs.compilar == 'true'
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+
+
+      # ==========================================
       # MOSTRAR ARCHIVOS
       # ==========================================
 
       - name: Mostrar archivos
+        if: steps.decidir.outputs.publicar == 'true'
         run: |
           echo "Archivos encontrados:"
           find web -type f -not -path '*/.git/*'
@@ -105,6 +187,7 @@ jobs:
       # ==========================================
 
       - name: Instalar Wrangler
+        if: steps.decidir.outputs.publicar == 'true'
         run: |
           npm install -g wrangler@latest
 
@@ -113,7 +196,16 @@ jobs:
       # SUBIR WEB A R2
       # ==========================================
 
+      - name: Publicar web compilada en Cloudflare R2
+        if: steps.tipo.outputs.compilar == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+        run: |
+          bash multiweb/scripts/publicar-compilada.sh "$CLIENTE" "web/${{ steps.tipo.outputs.salida }}" web
+
       - name: Publicar en Cloudflare R2
+        if: steps.decidir.outputs.publicar == 'true' && steps.tipo.outputs.compilar != 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
@@ -176,6 +268,7 @@ jobs:
       # ==========================================
 
       - name: Crear preview-map.json
+        if: steps.decidir.outputs.publicar == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
