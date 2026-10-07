@@ -1,0 +1,54 @@
+name: Desplegar panel
+
+# Despliega el Worker de un panel incluido en el repositorio de un cliente
+# (carpeta worker/ por defecto) con la cuenta de Cloudflare de la plataforma.
+# No sube ningún secreto: el panel pide su conexión con GitHub desde su propia
+# pantalla de administración. No afecta al despliegue de las webs.
+on:
+  workflow_dispatch:
+    inputs:
+      cliente:
+        description: "Repositorio del cliente (p. ej. elcontrapeso.com)"
+        required: true
+      carpeta:
+        description: "Carpeta del Worker dentro del repositorio"
+        required: false
+        default: worker
+
+jobs:
+  desplegar:
+    runs-on: ubuntu-latest
+    env:
+      CLIENTE: ${{ github.event.inputs.cliente }}
+      CARPETA: ${{ github.event.inputs.carpeta || 'worker' }}
+    steps:
+      - name: Generar token de GitHub App
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.GH_APP_ID }}
+          private-key: ${{ secrets.GH_PRIVATE_KEY }}
+          owner: irojo9
+          repositories: ${{ env.CLIENTE }}
+
+      - name: Descargar repositorio
+        uses: actions/checkout@v4
+        with:
+          repository: irojo9/${{ env.CLIENTE }}
+          token: ${{ steps.app-token.outputs.token }}
+          path: web
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Instalar dependencias del panel
+        working-directory: web/${{ env.CARPETA }}
+        run: npm ci
+
+      - name: Desplegar Worker
+        working-directory: web/${{ env.CARPETA }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+        run: npx wrangler deploy
