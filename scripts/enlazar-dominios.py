@@ -6,12 +6,17 @@ irojo9/CLIENTE) o, si no hay entrada, del propio nombre del repositorio, que
 coincide con el dominio: CLIENTE y www.CLIENTE.
 
 Cada dominio se enlaza como Custom Domain del Worker: Cloudflare crea el
-registro DNS y el certificado. Se salta el dominio si ya llega al Worker (por
-Custom Domain o por una ruta) y nunca se borra ni sobrescribe nada: si algo lo
-impide (registro DNS existente, otro Worker, zona fuera de la cuenta…) solo
-avisa. Nunca hace fallar el despliegue.
+registro DNS y el certificado. Si ya tiene un registro DNS (lo habitual en
+www, un CNAME al dominio), se enlaza con una ruta hostname/* en su lugar. Se
+salta el dominio si ya llega al Worker (por Custom Domain o por una ruta) y
+nunca se borra ni sobrescribe nada: si algo lo impide (otro Worker, zona fuera
+de la cuenta…) solo avisa. Nunca hace fallar el despliegue.
+
+Con --todos, en vez de un cliente, enlaza el www de todos los dominios de la
+cuenta que ya llegan al Worker (lo lanza cada domingo «Enlazar dominios www»).
 
 Uso: enlazar-dominios.py CLIENTE [clientes.json]
+     enlazar-dominios.py --todos
 Entorno: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, WORKER (multi-web)
 """
 import json
@@ -104,10 +109,13 @@ def ruta_cubre(patron, hostname):
     return host == hostname
 
 
-def enlazar(hostname):
-    zona = zona_de(hostname)
+def enlazar(hostname, zona=None):
+    zona = zona or zona_de(hostname)
     if not zona:
-        aviso(f"{hostname}: su zona no está en la cuenta de Cloudflare. Hay que añadir el dominio a Cloudflare antes.")
+        aviso(
+            f"{hostname}: el token no ve su zona. O el dominio no está en la cuenta de Cloudflare, "
+            f"o al token le falta Zone › Zone › Read (Cloudflare no da error, solo no la muestra)."
+        )
         return
 
     existentes = api("GET", f"/accounts/{CUENTA}/workers/domains", {"hostname": hostname})
@@ -135,11 +143,57 @@ def enlazar(hostname):
             "environment": "production",
         })
         print(f"+ {hostname}: enlazado al Worker {WORKER}.")
+        return
     except ErrorApi as e:
-        aviso(
-            f"{hostname}: no se ha podido enlazar ({e}). Si ya tiene un registro DNS, "
-            f"bórralo en Cloudflare › DNS y vuelve a desplegar."
-        )
+        error_dominio = e
+
+    # Lo normal es que ya exista un registro DNS (p. ej. CNAME www → dominio.com)
+    # y Cloudflare no deje crear el Custom Domain encima. Sin borrar el registro,
+    # una ruta hostname/* envía igualmente las peticiones al Worker.
+    try:
+        api("POST", f"/zones/{zona}/workers/routes", cuerpo={"pattern": f"{hostname}/*", "script": WORKER})
+        print(f"+ {hostname}: enlazado al Worker {WORKER} con la ruta {hostname}/* (ya tenía registro DNS).")
+        print(f"  Su registro DNS debe estar «Redirigido mediante proxy» (nube naranja).")
+    except ErrorApi as e:
+        aviso(f"{hostname}: no se ha podido enlazar (dominio: {error_dominio}; ruta: {e}).")
+
+
+def dominios_del_worker():
+    """{dominio: zona} de cada dominio raíz que ya llega al Worker (Custom Domain o ruta)."""
+    dominios = {}
+    for d in api("GET", f"/accounts/{CUENTA}/workers/domains", {"service": WORKER}):
+        if d.get("service") == WORKER and d.get("hostname") == d.get("zone_name"):
+            dominios[d["hostname"]] = d["zone_id"]
+
+    # Dominios servidos por una ruta «dominio.com/*» en vez de Custom Domain.
+    pagina = 1
+    while True:
+        zonas_pagina = api("GET", "/zones", {"account.id": CUENTA, "per_page": 50, "page": pagina})
+        for z in zonas_pagina:
+            if z["name"] in dominios:
+                continue
+            for r in api("GET", f"/zones/{z['id']}/workers/routes"):
+                if r.get("script") == WORKER and r.get("pattern", "").split("/", 1)[0].lower() == z["name"]:
+                    dominios[z["name"]] = z["id"]
+                    break
+        if len(zonas_pagina) < 50:
+            break
+        pagina += 1
+    return dominios
+
+
+def enlazar_todos(hostnames):
+    """hostnames: lista de (hostname, zona o None)."""
+    for hostname, zona in hostnames:
+        try:
+            enlazar(hostname, zona)
+        except ErrorApi as e:
+            if e.estado in (401, 403):
+                aviso(f"{hostname}: el token no tiene permiso ({e}). {PERMISOS}")
+                return
+            aviso(f"{hostname}: error de la API de Cloudflare ({e}).")
+        except Exception as e:  # red, respuesta inesperada…
+            aviso(f"{hostname}: {e}")
 
 
 def main():
@@ -149,22 +203,24 @@ def main():
         aviso("Faltan CLOUDFLARE_API_TOKEN o CLOUDFLARE_ACCOUNT_ID: no se enlazan dominios.")
         return
 
+    # --todos: el www de cada dominio que ya llega al Worker, sea de quien sea.
+    if cliente == "--todos":
+        try:
+            dominios = dominios_del_worker()
+        except ErrorApi as e:
+            aviso(f"No se han podido listar los dominios del Worker ({e}). {PERMISOS}")
+            return
+        print(f"Dominios enlazados a {WORKER}: {len(dominios)}")
+        enlazar_todos([(f"www.{d}", z) for d, z in sorted(dominios.items())])
+        return
+
     dominios = [d for d in dominios_del_cliente(cliente, ruta_clientes) if DOMINIO_VALIDO.match(d)]
     if not dominios:
         print(f"«{cliente}» no es un dominio: no se enlaza nada.")
         return
 
     print(f"Dominios de {cliente}: {', '.join(dominios)}")
-    for hostname in dominios:
-        try:
-            enlazar(hostname)
-        except ErrorApi as e:
-            if e.estado in (401, 403):
-                aviso(f"{hostname}: el token no tiene permiso ({e}). {PERMISOS}")
-                return
-            aviso(f"{hostname}: error de la API de Cloudflare ({e}).")
-        except Exception as e:  # red, respuesta inesperada…
-            aviso(f"{hostname}: {e}")
+    enlazar_todos([(d, None) for d in dominios])
 
 
 if __name__ == "__main__":
