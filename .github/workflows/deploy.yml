@@ -157,7 +157,7 @@ jobs:
           restore-keys: compilacion-${{ env.CLIENTE }}-
 
       - name: Descargar scripts de despliegue
-        if: steps.tipo.outputs.compilar == 'true'
+        if: steps.decidir.outputs.publicar == 'true'
         uses: actions/checkout@v4
         with:
           path: multiweb
@@ -379,6 +379,23 @@ jobs:
             --remote
 
           echo "Mapa subido correctamente."
+
+
+      # ==========================================
+      # ENLAZAR DOMINIOS AL WORKER
+      #
+      # dominio.com y www.dominio.com (o los «dominios» de clientes.json).
+      # Solo añade lo que falta; si algo lo impide avisa sin fallar.
+      # ==========================================
+
+      - name: Enlazar dominios al Worker
+        if: steps.decidir.outputs.publicar == 'true'
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+        run: |
+          python3 multiweb/scripts/enlazar-dominios.py "$CLIENTE" multiweb/clientes.json
 
 
       # ==========================================
