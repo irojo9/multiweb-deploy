@@ -13,7 +13,7 @@ nunca se borra ni sobrescribe nada: si algo lo impide (otro Worker, zona fuera
 de la cuenta…) solo avisa. Nunca hace fallar el despliegue.
 
 Con --todos, en vez de un cliente, enlaza el www de todos los dominios de la
-cuenta que ya llegan al Worker (lo lanza cada hora «Enlazar dominios www»).
+cuenta que ya llegan al Worker (lo lanza cada domingo «Enlazar dominios www»).
 
 Uso: enlazar-dominios.py CLIENTE [clientes.json]
      enlazar-dominios.py --todos

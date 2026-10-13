@@ -1,11 +1,11 @@
 name: Enlazar dominios www
 
-# Cada hora enlaza al Worker multi-web el www de todos los dominios de la cuenta
+# Cada domingo enlaza al Worker multi-web el www de todos los dominios de la cuenta
 # de Cloudflare que ya llegan al Worker: los que hay y los que se vayan añadiendo.
 # Solo añade lo que falta; no borra ni cambia nada.
 on:
   schedule:
-    - cron: "17 * * * *"
+    - cron: "17 6 * * 0"   # domingos, 06:17 UTC
   workflow_dispatch:
 
 concurrency:
