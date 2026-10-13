@@ -6,10 +6,11 @@ irojo9/CLIENTE) o, si no hay entrada, del propio nombre del repositorio, que
 coincide con el dominio: CLIENTE y www.CLIENTE.
 
 Cada dominio se enlaza como Custom Domain del Worker: Cloudflare crea el
-registro DNS y el certificado. Se salta el dominio si ya llega al Worker (por
-Custom Domain o por una ruta) y nunca se borra ni sobrescribe nada: si algo lo
-impide (registro DNS existente, otro Worker, zona fuera de la cuenta…) solo
-avisa. Nunca hace fallar el despliegue.
+registro DNS y el certificado. Si ya tiene un registro DNS (lo habitual en
+www, un CNAME al dominio), se enlaza con una ruta hostname/* en su lugar. Se
+salta el dominio si ya llega al Worker (por Custom Domain o por una ruta) y
+nunca se borra ni sobrescribe nada: si algo lo impide (otro Worker, zona fuera
+de la cuenta…) solo avisa. Nunca hace fallar el despliegue.
 
 Uso: enlazar-dominios.py CLIENTE [clientes.json]
 Entorno: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, WORKER (multi-web)
@@ -107,7 +108,10 @@ def ruta_cubre(patron, hostname):
 def enlazar(hostname):
     zona = zona_de(hostname)
     if not zona:
-        aviso(f"{hostname}: su zona no está en la cuenta de Cloudflare. Hay que añadir el dominio a Cloudflare antes.")
+        aviso(
+            f"{hostname}: el token no ve su zona. O el dominio no está en la cuenta de Cloudflare, "
+            f"o al token le falta Zone › Zone › Read (Cloudflare no da error, solo no la muestra)."
+        )
         return
 
     existentes = api("GET", f"/accounts/{CUENTA}/workers/domains", {"hostname": hostname})
@@ -135,11 +139,19 @@ def enlazar(hostname):
             "environment": "production",
         })
         print(f"+ {hostname}: enlazado al Worker {WORKER}.")
+        return
     except ErrorApi as e:
-        aviso(
-            f"{hostname}: no se ha podido enlazar ({e}). Si ya tiene un registro DNS, "
-            f"bórralo en Cloudflare › DNS y vuelve a desplegar."
-        )
+        error_dominio = e
+
+    # Lo normal es que ya exista un registro DNS (p. ej. CNAME www → dominio.com)
+    # y Cloudflare no deje crear el Custom Domain encima. Sin borrar el registro,
+    # una ruta hostname/* envía igualmente las peticiones al Worker.
+    try:
+        api("POST", f"/zones/{zona}/workers/routes", cuerpo={"pattern": f"{hostname}/*", "script": WORKER})
+        print(f"+ {hostname}: enlazado al Worker {WORKER} con la ruta {hostname}/* (ya tenía registro DNS).")
+        print(f"  Su registro DNS debe estar «Redirigido mediante proxy» (nube naranja).")
+    except ErrorApi as e:
+        aviso(f"{hostname}: no se ha podido enlazar (dominio: {error_dominio}; ruta: {e}).")
 
 
 def main():
