@@ -1,0 +1,23 @@
+name: Desplegar multi-web
+
+# Despliega el Worker que sirve todas las webs de clientes (worker/multi-web).
+# No toca los dominios enlazados al Worker ni los archivos de R2.
+on:
+  workflow_dispatch:
+
+jobs:
+  desplegar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Desplegar Worker
+        working-directory: worker/multi-web
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+        run: npx --yes wrangler@4 deploy

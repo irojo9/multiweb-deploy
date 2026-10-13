@@ -1,0 +1,20 @@
+// Worker que sirve todas las webs de clientes desde R2 (clientes-web/<dominio>/).
+// Se despliega con el workflow «Desplegar multi-web».
+//
+// Sin «routes» a propósito: los dominios de cada cliente los enlaza el
+// despliegue de su web (scripts/enlazar-dominios.py) y wrangler deja intactos
+// los que ya hay.
+{
+  "name": "multi-web",
+  "main": "src/index.js",
+  "compatibility_date": "2026-09-18",
+  "workers_dev": true,
+  "keep_vars": true,
+  "observability": { "enabled": true },
+  "r2_buckets": [
+    { "binding": "BUCKET", "bucket_name": "clientes-web" }
+  ],
+  "services": [
+    { "binding": "WEBSALES_CRM", "service": "websales-crm" }
+  ]
+}
