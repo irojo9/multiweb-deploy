@@ -12,7 +12,11 @@ salta el dominio si ya llega al Worker (por Custom Domain o por una ruta) y
 nunca se borra ni sobrescribe nada: si algo lo impide (otro Worker, zona fuera
 de la cuenta…) solo avisa. Nunca hace fallar el despliegue.
 
+Con --todos, en vez de un cliente, enlaza el www de todos los dominios de la
+cuenta que ya llegan al Worker (lo lanza cada hora «Enlazar dominios www»).
+
 Uso: enlazar-dominios.py CLIENTE [clientes.json]
+     enlazar-dominios.py --todos
 Entorno: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, WORKER (multi-web)
 """
 import json
@@ -105,8 +109,8 @@ def ruta_cubre(patron, hostname):
     return host == hostname
 
 
-def enlazar(hostname):
-    zona = zona_de(hostname)
+def enlazar(hostname, zona=None):
+    zona = zona or zona_de(hostname)
     if not zona:
         aviso(
             f"{hostname}: el token no ve su zona. O el dominio no está en la cuenta de Cloudflare, "
@@ -154,11 +158,60 @@ def enlazar(hostname):
         aviso(f"{hostname}: no se ha podido enlazar (dominio: {error_dominio}; ruta: {e}).")
 
 
+def dominios_del_worker():
+    """{dominio: zona} de cada dominio raíz que ya llega al Worker (Custom Domain o ruta)."""
+    dominios = {}
+    for d in api("GET", f"/accounts/{CUENTA}/workers/domains", {"service": WORKER}):
+        if d.get("service") == WORKER and d.get("hostname") == d.get("zone_name"):
+            dominios[d["hostname"]] = d["zone_id"]
+
+    # Dominios servidos por una ruta «dominio.com/*» en vez de Custom Domain.
+    pagina = 1
+    while True:
+        zonas_pagina = api("GET", "/zones", {"account.id": CUENTA, "per_page": 50, "page": pagina})
+        for z in zonas_pagina:
+            if z["name"] in dominios:
+                continue
+            for r in api("GET", f"/zones/{z['id']}/workers/routes"):
+                if r.get("script") == WORKER and r.get("pattern", "").split("/", 1)[0].lower() == z["name"]:
+                    dominios[z["name"]] = z["id"]
+                    break
+        if len(zonas_pagina) < 50:
+            break
+        pagina += 1
+    return dominios
+
+
+def enlazar_todos(hostnames):
+    """hostnames: lista de (hostname, zona o None)."""
+    for hostname, zona in hostnames:
+        try:
+            enlazar(hostname, zona)
+        except ErrorApi as e:
+            if e.estado in (401, 403):
+                aviso(f"{hostname}: el token no tiene permiso ({e}). {PERMISOS}")
+                return
+            aviso(f"{hostname}: error de la API de Cloudflare ({e}).")
+        except Exception as e:  # red, respuesta inesperada…
+            aviso(f"{hostname}: {e}")
+
+
 def main():
     cliente = sys.argv[1] if len(sys.argv) > 1 else ""
     ruta_clientes = sys.argv[2] if len(sys.argv) > 2 else "clientes.json"
     if not TOKEN or not CUENTA:
         aviso("Faltan CLOUDFLARE_API_TOKEN o CLOUDFLARE_ACCOUNT_ID: no se enlazan dominios.")
+        return
+
+    # --todos: el www de cada dominio que ya llega al Worker, sea de quien sea.
+    if cliente == "--todos":
+        try:
+            dominios = dominios_del_worker()
+        except ErrorApi as e:
+            aviso(f"No se han podido listar los dominios del Worker ({e}). {PERMISOS}")
+            return
+        print(f"Dominios enlazados a {WORKER}: {len(dominios)}")
+        enlazar_todos([(f"www.{d}", z) for d, z in sorted(dominios.items())])
         return
 
     dominios = [d for d in dominios_del_cliente(cliente, ruta_clientes) if DOMINIO_VALIDO.match(d)]
@@ -167,16 +220,7 @@ def main():
         return
 
     print(f"Dominios de {cliente}: {', '.join(dominios)}")
-    for hostname in dominios:
-        try:
-            enlazar(hostname)
-        except ErrorApi as e:
-            if e.estado in (401, 403):
-                aviso(f"{hostname}: el token no tiene permiso ({e}). {PERMISOS}")
-                return
-            aviso(f"{hostname}: error de la API de Cloudflare ({e}).")
-        except Exception as e:  # red, respuesta inesperada…
-            aviso(f"{hostname}: {e}")
+    enlazar_todos([(d, None) for d in dominios])
 
 
 if __name__ == "__main__":
