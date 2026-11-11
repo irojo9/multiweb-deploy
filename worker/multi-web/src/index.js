@@ -167,7 +167,10 @@ ${subdominio}.com/index.html`,
     // BUSCAR ARCHIVO
     // ==========================================
 
-    const object = await env.BUCKET.get(key);
+    let object = await env.BUCKET.get(key);
+    if (!object && carpeta === "ligapatria.com" && !/\.[a-z0-9]+$/i.test(ruta)) {
+      object = await env.BUCKET.get(`${key}.html`);
+    }
 
     // ==========================================
     // ARCHIVO NO ENCONTRADO
