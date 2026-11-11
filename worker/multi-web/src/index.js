@@ -128,7 +128,10 @@ ${subdominio}.com/index.html`,
         return Response.redirect(destino, 301);
       }
 
-      carpeta = dominio;
+      // Dominios que muestran la web de otra carpeta de R2
+      // (p. ej. elcontrapeso.com sirve lo que publica el repositorio elcontrapeso.es)
+      const ALIAS = { "elcontrapeso.com": "elcontrapeso.es" };
+      carpeta = ALIAS[dominio] || dominio;
     }
 
     // ==========================================
