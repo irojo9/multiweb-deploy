@@ -138,13 +138,10 @@ jobs:
           fi
           candado=false
           [ -f web/package-lock.json ] && candado=true
-          origen=web
-          [ "$compilar" = true ] && origen="web/$salida"
           echo "compilar=$compilar" >> "$GITHUB_OUTPUT"
           echo "salida=$salida" >> "$GITHUB_OUTPUT"
           echo "candado=$candado" >> "$GITHUB_OUTPUT"
-          echo "origen=$origen" >> "$GITHUB_OUTPUT"
-          echo "Compilar: $compilar · Carpeta publicada: $origen · package-lock.json: $candado"
+          echo "Compilar: $compilar · Carpeta de salida: $salida · package-lock.json: $candado"
 
       # Con package-lock.json se guarda la caché de npm; sin él no se puede
       # (y antes el despliegue fallaba en este paso).
@@ -186,6 +183,27 @@ jobs:
 
 
       # ==========================================
+      # CARPETA A PUBLICAR
+      #
+      # La carpeta que genera la compilación (dist/ o la indicada en
+      # "multiweb": { "salida": "…" }). Si la compilación escribe en la raíz
+      # del repositorio (no existe esa carpeta), o la web no se compila, se
+      # publica el repositorio.
+      # ==========================================
+
+      - name: Carpeta a publicar
+        id: carpeta
+        if: steps.decidir.outputs.publicar == 'true'
+        run: |
+          origen=web
+          if [ "${{ steps.tipo.outputs.compilar }}" = "true" ] && [ -d "web/${{ steps.tipo.outputs.salida }}" ]; then
+            origen="web/${{ steps.tipo.outputs.salida }}"
+          fi
+          echo "origen=$origen" >> "$GITHUB_OUTPUT"
+          echo "Se publica: $origen"
+
+
+      # ==========================================
       # REVISIÓN PREVIA
       #
       # Avisa (sin detener el despliegue) de lo que le falta a la web:
@@ -197,7 +215,7 @@ jobs:
         if: steps.decidir.outputs.publicar == 'true'
         continue-on-error: true
         run: |
-          python3 multiweb/scripts/comprobar-web.py "$CLIENTE" "${{ steps.tipo.outputs.origen }}"
+          python3 multiweb/scripts/comprobar-web.py "$CLIENTE" "${{ steps.carpeta.outputs.origen }}"
 
 
       # ==========================================
@@ -224,7 +242,7 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
         run: |
-          bash multiweb/scripts/publicar.sh "$CLIENTE" "${{ steps.tipo.outputs.origen }}" web
+          bash multiweb/scripts/publicar.sh "$CLIENTE" "${{ steps.carpeta.outputs.origen }}" web
 
 
       # ==========================================
