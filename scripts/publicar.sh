@@ -1,12 +1,17 @@
 #!/usr/bin/env bash
-# Publica en R2 una web compilada (la carpeta que genera «npm run build», p. ej. dist/).
+# Publica una web en R2: la carpeta que genera «npm run build» (p. ej. dist/) o,
+# en las webs sin compilación, el propio repositorio.
 #
 # Solo sube los archivos que han cambiado y borra de R2 los que ya no existen. Para
 # saberlo guarda en R2 un manifiesto con la huella SHA-1 de cada archivo publicado.
 # La primera vez (sin manifiesto) borra también los archivos del repositorio que se
-# hubieran subido antes tal cual (código fuente, borradores…).
+# hubieran subido antes y ya no se publican (documentación, código fuente…).
 #
-# Uso: publicar-compilada.sh CLIENTE CARPETA_COMPILADA CARPETA_REPO
+# Nunca se publican: archivos y carpetas ocultos (salvo .well-known), *.md, _build/,
+# node_modules/ ni los archivos de configuración de PRIVADOS. El Worker multi-web
+# tiene la misma lista (esPrivado) y tampoco los sirve.
+#
+# Uso: publicar.sh CLIENTE CARPETA_A_PUBLICAR CARPETA_REPO
 set -euo pipefail
 
 CLIENTE="${1:?Falta el cliente}"
@@ -14,6 +19,9 @@ ORIGEN="$(cd "${2:?Falta la carpeta compilada}" && pwd)"
 REPO="$(cd "${3:?Falta la carpeta del repositorio}" && pwd)"
 BUCKET="clientes-web"
 PARALELO=8
+# Se aplica a las líneas «huella(40)␠␠ruta» del manifiesto: la ruta empieza en la columna 43.
+INI='(^.{42}|/)'
+PRIVADOS="${INI}\\.(?!well-known(/|\$))|${INI}(_build|node_modules)/|${INI}(_headers|_redirects|_routes\\.json|package\\.json|package-lock\\.json|wrangler\\.toml|wrangler\\.jsonc|wrangler\\.json|app\\.config\\.ts|manus-routes\\.json)\$|\\.md\$"
 
 if [[ ! "$CLIENTE" =~ ^[A-Za-z0-9._-]+$ ]]; then
   echo "Cliente no válido: $CLIENTE" >&2
@@ -25,7 +33,14 @@ trap 'rm -rf "$TMP"' EXIT
 MANIFIESTO_KEY="$CLIENTE/.multiweb-manifiesto.txt"
 
 # Manifiesto nuevo: «huella␠␠ruta» por línea, ordenado.
-(cd "$ORIGEN" && find . -type f -print0 | xargs -0 -r sha1sum | sed 's#  \./#  #' | sort -k2) > "$TMP/nuevo.txt"
+(cd "$ORIGEN" && find . -type f -not -path './.git/*' -print0 | xargs -0 -r sha1sum | sed 's#  \./#  #' | { grep -Piv "$PRIVADOS" || true; } | sort -k2) > "$TMP/nuevo.txt"
+
+if [ ! -s "$TMP/nuevo.txt" ]; then
+  echo "::error::La carpeta a publicar está vacía: no se publica nada." >&2
+  exit 1
+fi
+grep -q '^.\{42\}index\.html$' "$TMP/nuevo.txt" || echo "::warning::$CLIENTE: no hay index.html en la raíz de la web."
+
 cut -c43- "$TMP/nuevo.txt" | sort > "$TMP/claves-nuevas.txt"
 
 if wrangler r2 object get "$BUCKET/$MANIFIESTO_KEY" --file "$TMP/anterior.txt" --remote > /dev/null 2>&1; then
@@ -43,7 +58,7 @@ comm -23 <(sort "$TMP/nuevo.txt") <(sort "$TMP/anterior.txt") | cut -c43- > "$TM
 comm -23 "$TMP/claves-anteriores.txt" "$TMP/claves-nuevas.txt" > "$TMP/borrar.txt"
 if [ "$PRIMERA" = true ]; then
   # Archivos del repositorio que el despliegue antiguo subía tal cual.
-  git -C "$REPO" ls-files | sort > "$TMP/fuente.txt"
+  git -C "$REPO" -c core.quotepath=off ls-files | sort > "$TMP/fuente.txt"
   comm -23 "$TMP/fuente.txt" "$TMP/claves-nuevas.txt" >> "$TMP/borrar.txt"
   sort -u -o "$TMP/borrar.txt" "$TMP/borrar.txt"
 fi
@@ -51,7 +66,7 @@ fi
 echo "Archivos en la web: $(wc -l < "$TMP/claves-nuevas.txt")"
 echo "A subir:            $(wc -l < "$TMP/subir.txt")"
 echo "A borrar:           $(wc -l < "$TMP/borrar.txt")"
-[ "$PRIMERA" = true ] && echo "(Primera publicación compilada: se limpian los archivos de código subidos antes.)"
+[ "$PRIMERA" = true ] && echo "(Primera publicación con manifiesto: se limpian los archivos que ya no se publican.)"
 
 tipo() {
   local ext="${1##*.}"
@@ -86,8 +101,16 @@ tipo() {
 
 subir() {
   local clave="$1"
-  wrangler r2 object put "$BUCKET/$CLIENTE/$clave" --file "$ORIGEN/$clave" --content-type "$(tipo "$clave")" --remote > /dev/null
-  echo "↑ $clave"
+  local intento
+  for intento in 1 2 3; do
+    if wrangler r2 object put "$BUCKET/$CLIENTE/$clave" --file "$ORIGEN/$clave" --content-type "$(tipo "$clave")" --remote > /dev/null 2>&1; then
+      echo "↑ $clave"
+      return 0
+    fi
+    sleep $((intento * 3))
+  done
+  echo "::error::No se ha podido subir $clave" >&2
+  return 1
 }
 
 borrar() {
@@ -105,4 +128,4 @@ export BUCKET CLIENTE ORIGEN
 wrangler r2 object put "$BUCKET/$MANIFIESTO_KEY" --file "$TMP/nuevo.txt" --content-type "text/plain; charset=utf-8" --remote > /dev/null
 [ -s "$TMP/borrar.txt" ] && xargs -d '\n' -P "$PARALELO" -I{} bash -c 'borrar "$1"' _ {} < "$TMP/borrar.txt"
 
-echo "Publicación compilada terminada."
+echo "Publicación terminada."

@@ -136,17 +136,31 @@ jobs:
             compilar=$(node -e "const p=require('./web/package.json');process.stdout.write(p.scripts&&p.scripts.build?'true':'false')")
             salida=$(node -e "const p=require('./web/package.json');process.stdout.write((p.multiweb&&p.multiweb.salida)||'dist')")
           fi
+          candado=false
+          [ -f web/package-lock.json ] && candado=true
+          origen=web
+          [ "$compilar" = true ] && origen="web/$salida"
           echo "compilar=$compilar" >> "$GITHUB_OUTPUT"
           echo "salida=$salida" >> "$GITHUB_OUTPUT"
-          echo "Compilar: $compilar · Carpeta publicada: $salida"
+          echo "candado=$candado" >> "$GITHUB_OUTPUT"
+          echo "origen=$origen" >> "$GITHUB_OUTPUT"
+          echo "Compilar: $compilar · Carpeta publicada: $origen · package-lock.json: $candado"
 
-      - name: Preparar Node
-        if: steps.tipo.outputs.compilar == 'true'
+      # Con package-lock.json se guarda la caché de npm; sin él no se puede
+      # (y antes el despliegue fallaba en este paso).
+      - name: Preparar Node (con caché de npm)
+        if: steps.tipo.outputs.compilar == 'true' && steps.tipo.outputs.candado == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: web/package-lock.json
+
+      - name: Preparar Node
+        if: steps.decidir.outputs.publicar == 'true' && !(steps.tipo.outputs.compilar == 'true' && steps.tipo.outputs.candado == 'true')
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
 
       - name: Caché de la compilación
         if: steps.tipo.outputs.compilar == 'true'
@@ -167,19 +181,23 @@ jobs:
         if: steps.tipo.outputs.compilar == 'true'
         working-directory: web
         run: |
-          npm ci
+          if [ -f package-lock.json ]; then npm ci; else npm install; fi
           npm run build
 
 
       # ==========================================
-      # MOSTRAR ARCHIVOS
+      # REVISIÓN PREVIA
+      #
+      # Avisa (sin detener el despliegue) de lo que le falta a la web:
+      # canonical, sitemap, 404, páginas legales, textos de relleno,
+      # imágenes pesadas… Los avisos salen en el resumen de la ejecución.
       # ==========================================
 
-      - name: Mostrar archivos
+      - name: Revisar la web
         if: steps.decidir.outputs.publicar == 'true'
+        continue-on-error: true
         run: |
-          echo "Archivos encontrados:"
-          find web -type f -not -path '*/.git/*'
+          python3 multiweb/scripts/comprobar-web.py "$CLIENTE" "${{ steps.tipo.outputs.origen }}"
 
 
       # ==========================================
@@ -189,196 +207,24 @@ jobs:
       - name: Instalar Wrangler
         if: steps.decidir.outputs.publicar == 'true'
         run: |
-          npm install -g wrangler@latest
+          npm install -g wrangler@4
 
 
       # ==========================================
       # SUBIR WEB A R2
+      #
+      # Solo sube lo que ha cambiado y borra lo que ya no existe. No publica
+      # documentación ni configuración (README.md, _headers, .htaccess…).
+      # La preview cliente.damemiweb.com la resuelve el Worker por la carpeta.
       # ==========================================
-
-      - name: Publicar web compilada en Cloudflare R2
-        if: steps.tipo.outputs.compilar == 'true'
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
-        run: |
-          bash multiweb/scripts/publicar-compilada.sh "$CLIENTE" "web/${{ steps.tipo.outputs.salida }}" web
 
       - name: Publicar en Cloudflare R2
-        if: steps.decidir.outputs.publicar == 'true' && steps.tipo.outputs.compilar != 'true'
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
-        run: |
-
-          cd web
-
-          find . \
-            -type f \
-            -not -path './.git/*' \
-            -print0 | while IFS= read -r -d '' file
-          do
-
-            key="${file#./}"
-
-            # Tipo de contenido según la extensión (wrangler no lo deduce)
-            ext="${file##*.}"
-            ext="${ext,,}"
-
-            case "$ext" in
-              html|htm)    content_type="text/html; charset=utf-8" ;;
-              css)         content_type="text/css; charset=utf-8" ;;
-              js|mjs)      content_type="text/javascript; charset=utf-8" ;;
-              json|map)    content_type="application/json; charset=utf-8" ;;
-              webmanifest) content_type="application/manifest+json; charset=utf-8" ;;
-              xml)         content_type="application/xml; charset=utf-8" ;;
-              txt|md)      content_type="text/plain; charset=utf-8" ;;
-              svg)         content_type="image/svg+xml" ;;
-              png)         content_type="image/png" ;;
-              jpg|jpeg)    content_type="image/jpeg" ;;
-              gif)         content_type="image/gif" ;;
-              webp)        content_type="image/webp" ;;
-              avif)        content_type="image/avif" ;;
-              ico)         content_type="image/x-icon" ;;
-              woff2)       content_type="font/woff2" ;;
-              woff)        content_type="font/woff" ;;
-              ttf)         content_type="font/ttf" ;;
-              otf)         content_type="font/otf" ;;
-              pdf)         content_type="application/pdf" ;;
-              mp4)         content_type="video/mp4" ;;
-              webm)        content_type="video/webm" ;;
-              *)           content_type="application/octet-stream" ;;
-            esac
-
-            echo "Subiendo: $key ($content_type)"
-
-            wrangler r2 object put \
-              "clientes-web/${{ env.CLIENTE }}/${key}" \
-              --file "$file" \
-              --content-type "$content_type" \
-              --remote
-
-          done
-
-          cd ..
-
-
-      # ==========================================
-      # CREAR / ACTUALIZAR MAPA DE PREVIEWS
-      # ==========================================
-
-      - name: Crear preview-map.json
         if: steps.decidir.outputs.publicar == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
         run: |
-
-          echo "========================================="
-          echo "       ACTUALIZANDO PREVIEW MAP"
-          echo "========================================="
-
-          echo "Cliente:"
-          echo "$CLIENTE"
-
-          echo ""
-
-          # ========================================
-          # INTENTAR DESCARGAR MAPA EXISTENTE
-          # ========================================
-
-          if wrangler r2 object get \
-            "clientes-web/preview-map.json" \
-            --file preview-map.json \
-            --remote
-          then
-
-            echo "Mapa existente encontrado."
-
-          else
-
-            echo "No existe mapa. Creando uno nuevo."
-
-            echo "{}" > preview-map.json
-
-          fi
-
-
-          # ========================================
-          # ACTUALIZAR MAPA
-          # ========================================
-
-          python3 - <<'PY'
-          import json
-          import os
-
-          cliente = os.environ["CLIENTE"]
-
-          print("Cliente recibido:")
-          print(cliente)
-
-          try:
-              with open(
-                  "preview-map.json",
-                  "r",
-                  encoding="utf-8"
-              ) as f:
-                  data = json.load(f)
-          except Exception:
-              data = {}
-
-          # El repositorio coincide con el dominio
-          # del cliente.
-
-          data[cliente] = cliente
-
-          with open(
-              "preview-map.json",
-              "w",
-              encoding="utf-8"
-          ) as f:
-              json.dump(
-                  data,
-                  f,
-                  indent=2,
-                  ensure_ascii=False
-              )
-
-          print("")
-          print("Mapa actualizado:")
-          print(
-              json.dumps(
-                  data,
-                  indent=2,
-                  ensure_ascii=False
-              )
-          )
-          PY
-
-
-          # ========================================
-          # MOSTRAR MAPA
-          # ========================================
-
-          echo ""
-          echo "Contenido final de preview-map.json:"
-          cat preview-map.json
-
-          echo ""
-
-
-          # ========================================
-          # SUBIR MAPA A R2
-          # ========================================
-
-          echo "Subiendo preview-map.json a R2..."
-
-          wrangler r2 object put \
-            "clientes-web/preview-map.json" \
-            --file preview-map.json \
-            --remote
-
-          echo "Mapa subido correctamente."
+          bash multiweb/scripts/publicar.sh "$CLIENTE" "${{ steps.tipo.outputs.origen }}" web
 
 
       # ==========================================
@@ -420,6 +266,6 @@ jobs:
           echo "clientes-web/${{ env.CLIENTE }}/"
           echo ""
           echo "Preview:"
-          echo "https://${{ env.CLIENTE }}.damemiweb.com"
+          echo "https://${CLIENTE%.*}.damemiweb.com"
           echo ""
           echo "========================================="
