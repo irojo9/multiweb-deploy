@@ -94,7 +94,12 @@ jobs:
           FORZAR: ${{ github.event.client_payload.forzar }}
         run: |
           publicar=true
-          if [ -n "$COMMIT" ] && [ "$FORZAR" != "true" ]; then
+          # Este repositorio (el propio sistema de despliegue) no es una web.
+          if [ "${CLIENTE,,}" = "multiweb-deploy" ]; then
+            publicar=false
+            echo "multiweb-deploy no es una web de cliente: no se publica."
+          fi
+          if [ "$publicar" = true ] && [ -n "$COMMIT" ] && [ "$FORZAR" != "true" ]; then
             mensaje=$(gh api "repos/irojo9/${{ env.CLIENTE }}/commits/$COMMIT" --jq '.commit.message' || true)
             if printf '%s' "$mensaje" | grep -qiE '\[(skip ci|ci skip|no ci|skip actions|actions skip)\]'; then
               publicar=false
