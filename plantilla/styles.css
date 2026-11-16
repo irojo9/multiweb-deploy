@@ -1,0 +1,43 @@
+/* Paleta y tipografía: cambiar aquí para cada cliente. */
+:root {
+  --fondo: #ffffff;
+  --texto: #14202b;
+  --marca: #0b2b4d;
+  --acento: #c94a26;
+  --ancho: 1100px;
+}
+*, *::before, *::after { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 18px;
+  line-height: 1.6;
+  color: var(--texto);
+  background: var(--fondo);
+}
+img { max-width: 100%; height: auto; display: block; }
+main, .cabecera, .pie { max-width: var(--ancho); margin: 0 auto; padding: 16px; }
+h1 { font-size: clamp(32px, 6vw, 56px); line-height: 1.1; letter-spacing: -0.03em; margin: 0 0 16px; }
+h2 { font-size: clamp(24px, 4vw, 34px); margin: 48px 0 16px; }
+.cabecera { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.marca { font-weight: 800; color: var(--marca); text-decoration: none; }
+.boton {
+  display: inline-block; padding: 14px 20px; border-radius: 12px;
+  background: var(--acento); color: #fff; font-weight: 800; text-decoration: none;
+}
+.boton.secundario { background: transparent; color: var(--marca); border: 2px solid var(--marca); }
+.portada { padding: 48px 0; }
+.pie { margin-top: 64px; padding-bottom: 96px; font-size: 16px; border-top: 1px solid #dde3e8; }
+.saltar { position: absolute; left: -9999px; }
+.saltar:focus { left: 16px; top: 16px; background: #fff; padding: 8px; }
+.llamada-movil {
+  display: none; position: fixed; left: 12px; right: 12px; bottom: 12px; padding: 16px;
+  border-radius: 14px; background: var(--acento); color: #fff; font-weight: 800;
+  text-align: center; text-decoration: none; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+@media (max-width: 720px) {
+  .llamada-movil { display: block; }
+  .cabecera .boton { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }

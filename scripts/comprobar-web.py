@@ -19,6 +19,7 @@ RELLENOS = [
     ("DOMINIO-DEFINITIVO", "queda el marcador DOMINIO-DEFINITIVO sin sustituir por el dominio real"),
     ("manuscdn.com", "enlaza recursos de manuscdn.com (exportación de Manus): hay que alojarlos en la web"),
     ("lorem ipsum", "queda texto de relleno «lorem ipsum»"),
+    ("{{", "quedan marcadores {{…}} de la plantilla sin sustituir"),
     ("PEGA_AQUI", "queda un marcador PEGA_AQUI sin rellenar"),
     ("tudominio.com", "queda el dominio de ejemplo tudominio.com"),
     ("example.com", "queda el dominio de ejemplo example.com"),
@@ -89,6 +90,9 @@ def main():
             continue
         contenido = leer(os.path.join(carpeta, relativa)).lower()
         for marca, mensaje in RELLENOS:
+            # «{{» es normal en JavaScript y CSS compilados: solo cuenta en páginas y textos
+            if marca == "{{" and not re.search(r"\.(html?|xml|txt)$", relativa, re.I):
+                continue
             if marca.lower() in contenido:
                 encontrados.setdefault(mensaje, []).append(relativa)
         if relativa.lower().endswith((".html", ".htm")):

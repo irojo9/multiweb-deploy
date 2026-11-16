@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="es-ES">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>{{SERVICIO}} en {{CIUDAD}} | {{NEGOCIO}} · {{TELEFONO}}</title>
+  <meta name="description" content="{{DESCRIPCION}} Llama al {{TELEFONO}}.">
+  <link rel="canonical" href="https://{{DOMINIO}}/">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <meta name="theme-color" content="#0b2b4d">
+
+  <link rel="stylesheet" href="styles.css?v=1">
+  <script src="script.js?v=1" defer></script>
+  <link rel="icon" href="assets/img/icono.svg" type="image/svg+xml">
+
+  <meta property="og:type" content="website">
+  <meta property="og:locale" content="es_ES">
+  <meta property="og:site_name" content="{{NEGOCIO}}">
+  <meta property="og:title" content="{{NEGOCIO}} · {{SERVICIO}} en {{CIUDAD}}">
+  <meta property="og:description" content="{{DESCRIPCION}}">
+  <meta property="og:url" content="https://{{DOMINIO}}/">
+  <meta property="og:image" content="https://{{DOMINIO}}/assets/img/og.jpg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "{{TIPO_SCHEMA}}",
+    "@id": "https://{{DOMINIO}}/#negocio",
+    "name": "{{NEGOCIO}}",
+    "url": "https://{{DOMINIO}}/",
+    "telephone": "{{TELEFONO_E164}}",
+    "image": "https://{{DOMINIO}}/assets/img/og.jpg",
+    "areaServed": { "@type": "City", "name": "{{CIUDAD}}" },
+    "address": { "@type": "PostalAddress", "addressLocality": "{{CIUDAD}}", "addressCountry": "ES" }
+  }
+  </script>
+</head>
+<body>
+  <a class="saltar" href="#contenido">Saltar al contenido</a>
+
+  <header class="cabecera">
+    <a class="marca" href="/">{{NEGOCIO}}</a>
+    <a class="boton" href="tel:{{TELEFONO_E164}}">Llamar · {{TELEFONO}}</a>
+  </header>
+
+  <main id="contenido">
+    <section class="portada">
+      <h1>{{SERVICIO}} en {{CIUDAD}}</h1>
+      <p>{{DESCRIPCION}}</p>
+      <p>
+        <a class="boton" href="tel:{{TELEFONO_E164}}">Llamar ahora</a>
+        <a class="boton secundario" href="https://wa.me/{{TELEFONO_E164}}" rel="noopener">WhatsApp</a>
+      </p>
+    </section>
+
+    <section id="servicios">
+      <h2>Servicios</h2>
+      <!-- Un bloque por servicio real del cliente -->
+    </section>
+
+    <section id="trabajos">
+      <h2>Trabajos realizados</h2>
+      <!-- Fotos reales: <picture> con AVIF/WebP, width/height y loading="lazy" -->
+    </section>
+
+    <section id="preguntas">
+      <h2>Preguntas frecuentes</h2>
+      <!-- Si se rellenan, añadir también el JSON-LD FAQPage -->
+    </section>
+  </main>
+
+  <footer class="pie">
+    <p>{{NEGOCIO}} · {{CIUDAD}} · <a href="tel:{{TELEFONO_E164}}">{{TELEFONO}}</a></p>
+    <p><a href="/aviso-legal/">Aviso legal</a> · <a href="/privacidad/">Privacidad</a></p>
+    <p>© <span data-anio></span> {{NEGOCIO}}</p>
+  </footer>
+
+  <a class="llamada-movil" href="tel:{{TELEFONO_E164}}">Llamar · {{TELEFONO}}</a>
+</body>
+</html>

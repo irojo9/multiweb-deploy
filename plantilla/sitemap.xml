@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://{{DOMINIO}}/</loc><lastmod>{{FECHA}}</lastmod></url>
+  <url><loc>https://{{DOMINIO}}/aviso-legal/</loc><lastmod>{{FECHA}}</lastmod></url>
+  <url><loc>https://{{DOMINIO}}/privacidad/</loc><lastmod>{{FECHA}}</lastmod></url>
+</urlset>
