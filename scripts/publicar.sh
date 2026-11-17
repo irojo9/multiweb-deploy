@@ -124,7 +124,15 @@ export BUCKET CLIENTE ORIGEN
 
 # Primero se sube lo nuevo, luego el manifiesto y por último se borra lo viejo,
 # para que la web nunca quede a medias.
-[ -s "$TMP/subir.txt" ] && xargs -d '\n' -P "$PARALELO" -I{} bash -c 'subir "$1"' _ {} < "$TMP/subir.txt"
+# La subida va por la API (r2-subir.py): mucho más rápida que un wrangler por archivo
+# y reanudable (se salta lo que ya está igual en R2). Si no hay Python, como antes.
+if [ -s "$TMP/subir.txt" ]; then
+  if command -v python3 > /dev/null && [ -n "${CLOUDFLARE_ACCOUNT_ID:-}" ]; then
+    python3 "$(dirname "$0")/r2-subir.py" "$BUCKET" "$CLIENTE" "$ORIGEN" "$TMP/subir.txt"
+  else
+    xargs -d '\n' -P "$PARALELO" -I{} bash -c 'subir "$1"' _ {} < "$TMP/subir.txt"
+  fi
+fi
 wrangler r2 object put "$BUCKET/$MANIFIESTO_KEY" --file "$TMP/nuevo.txt" --content-type "text/plain; charset=utf-8" --remote > /dev/null
 [ -s "$TMP/borrar.txt" ] && xargs -d '\n' -P "$PARALELO" -I{} bash -c 'borrar "$1"' _ {} < "$TMP/borrar.txt"
 

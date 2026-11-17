@@ -186,6 +186,17 @@ jobs:
           if [ -f package-lock.json ]; then npm ci; else npm install; fi
           npm run build
 
+      # La caché (p. ej. las imágenes ya optimizadas) se guarda nada más compilar,
+      # no al final: si la publicación se corta, el siguiente despliegue no
+      # vuelve a generarlo todo.
+      - name: Guardar caché de la compilación
+        if: steps.tipo.outputs.compilar == 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: web/.cache
+          key: compilacion-${{ env.CLIENTE }}-${{ github.run_id }}
+
 
       # ==========================================
       # CARPETA A PUBLICAR
