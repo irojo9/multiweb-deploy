@@ -120,6 +120,8 @@ jobs:
           repository: irojo9/${{ env.CLIENTE }}
           token: ${{ steps.app-token.outputs.token }}
           path: web
+          # Historial reciente para saber qué se acaba de editar y subirlo primero.
+          fetch-depth: 30
 
 
       # ==========================================

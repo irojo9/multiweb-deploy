@@ -126,6 +126,16 @@ export BUCKET CLIENTE ORIGEN
 # para que la web nunca quede a medias.
 # La subida va por la API (r2-subir.py): mucho más rápida que un wrangler por archivo
 # y reanudable (se salta lo que ya está igual en R2). Si no hay Python, como antes.
+# Lo editado en las últimas horas (artículos e imágenes) se sube lo primero.
+if git -C "$REPO" rev-parse --git-dir > /dev/null 2>&1; then
+  git -C "$REPO" -c core.quotepath=off log --since="6 hours ago" --name-only --pretty=format: 2>/dev/null \
+    | { grep -E '^(content/|.*/uploads/)' || true; } | sort -u | while IFS= read -r ruta; do
+      nombre="${ruta##*/}"; nombre="${nombre%.*}"
+      case "$nombre" in index|README|readme|_index|"") ;; *) echo "$nombre" ;; esac
+    done | sort -u | head -n 300 > "$TMP/prioridad.txt" || true
+  export PRIORIDAD="$TMP/prioridad.txt"
+fi
+
 if [ -s "$TMP/subir.txt" ]; then
   if command -v python3 > /dev/null && [ -n "${CLOUDFLARE_ACCOUNT_ID:-}" ]; then
     python3 "$(dirname "$0")/r2-subir.py" "$BUCKET" "$CLIENTE" "$ORIGEN" "$TMP/subir.txt"

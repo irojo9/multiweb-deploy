@@ -120,6 +120,28 @@ def main():
         pendientes.append(clave)
     print(f'A subir de verdad: {len(pendientes)} (iguales en R2: {len(claves) - len(pendientes)}).', flush=True)
 
+    # Orden de subida: primero lo recién editado (lista PRIORIDAD: un nombre por línea,
+    # p. ej. el slug del artículo o el nombre de la imagen), luego la portada y las
+    # portadas de sección, después el resto de páginas y al final lo demás. Así el
+    # cambio se ve en segundos aunque la publicación completa tarde minutos.
+    marcas = []
+    if os.environ.get('PRIORIDAD') and os.path.isfile(os.environ['PRIORIDAD']):
+        marcas = [l.strip() for l in open(os.environ['PRIORIDAD'], encoding='utf-8') if len(l.strip()) >= 5]
+
+    def orden(clave):
+        if any(f'/{m}/' in f'/{clave}' or os.path.basename(clave).startswith(m) for m in marcas):
+            return 0
+        if clave == 'index.html' or (clave.endswith('/index.html') and clave.count('/') == 1):
+            return 1
+        if clave.endswith('.html'):
+            return 2
+        return 3
+
+    pendientes.sort(key=orden)
+    primeros = sum(1 for c in pendientes if orden(c) == 0)
+    if primeros:
+        print(f'Primero se suben {primeros} archivos de lo recién editado.', flush=True)
+
     hechos = 0
     fallos = []
     cerrojo = threading.Lock()
